@@ -1,93 +1,85 @@
-# kino_köln_notify
+# kino-koeln-notify
 
-A lightweight Python notification utility (formerly `Kino Köln`) that scrapes [koeln.de/kino](https://www.koeln.de/kino/) and sends a daily Pushover message listing all movies currently showing in Cologne in their **original language (OV)** or **original language with German subtitles (OmU)**. It no longer relies on a static `movie_titles.txt` file; the list is generated dynamically from the website.
+A lightweight Python notification utility that scrapes [koeln.de/kino](https://www.koeln.de/kino/) and sends a daily Pushover message listing all movies currently showing in Cologne in their **original language (OV)** or **original language with German subtitles (OmU)**. The list is built dynamically from the live website.
 
 ---
 
 ## What it does
 
-- Scrapes the koeln.de cinema listings using `requests` and `BeautifulSoup`
-- Filters movies showing in OV (Originalversion) or OmU (Original mit Untertiteln)
-- Extracts the release year directly from the page
-- Includes a direct link to each movie's detail page on koeln.de
-- Sends the results as a Pushover notification, splitting into multiple messages if needed
+- Fetches the cinema listings with `requests` and parses them using `BeautifulSoup`
+- Identifies films tagged OV or OmU and pulls the release year
+- Includes links back to the corresponding koeln.de detail pages
+- Dispatches the results via Pushover, automatically splitting into multiple messages when needed
 
 ---
 
 ## Requirements
 
-Python 3.9+ and the following libraries:
+Python 3.9+ and these packages:
 
-```
-pip3 install requests beautifulsoup4
+```bash
+pip install -r requirements.txt
 ```
 
-No browser driver, no external API keys required.
+(The current `requirements.txt` already lists `requests`, `beautifulsoup4`, and `python-dotenv`.)
 
 ---
 
 ## Configuration
 
-The app reads its settings from environment variables, which makes it easy to run locally or inside Docker. At minimum you need to set:
+Environment variables drive the configuration. Define the following values before running:
 
-```
+```bash
 PUSHOVER_USER=your_pushover_user_key
 PUSHOVER_TOKEN=your_pushover_api_token
 ```
 
-You can obtain these from [pushover.net](https://pushover.net). To avoid committing secrets, create a `.env` file in the project root and add the two lines above. The script uses `python-dotenv` (already included in `requirements.txt`) to load the file automatically.
+You obtain these credentials from [pushover.net](https://pushover.net). To keep them out of Git, put the two lines in a `.env` file at the project root; the script loads that file automatically.
 
-### Docker Compose
+### Docker
 
-A `docker-compose.yml` is included for convenience. It will build the image from the `Dockerfile` and load the `.env` file:
+A simple `docker-compose.yml` is provided for containerized execution:
 
 ```yaml
-version: '3'
+version: "3.9"
 services:
   kino:
     build: .
-    env_file:
-      - .env
-    command: python kino_koeln.py
+    environment:
+      - PUSHOVER_USER=${PUSHOVER_USER}
+      - PUSHOVER_TOKEN=${PUSHOVER_TOKEN}
+    volumes:
+      - ./:/app
+    restart: unless-stopped
 ```
 
-Start the container with:
+Start the service with:
 
 ```bash
 docker-compose up --build
 ```
 
-You can also run the script directly with the environment variables set:
+You can also run the script directly once the variables are exported:
 
 ```bash
 export PUSHOVER_USER=... PUSHOVER_TOKEN=...
-python3 kino_koeln.py
+python kino_koeln_notify.py
 ```
 
 ---
 
 ## Usage
 
-Run straight from Python:
-
 ```bash
-python3 kino_koeln.py
+python kino_koeln_notify.py
 ```
 
-or using Docker Compose:
-
-```bash
-docker-compose up --build
-```
-You'll receive a Pushover notification formatted like this:
+(or via Docker Compose as shown above). Notifications look like:
 
 ```
 OV (Original Version):
 Marty Supreme (2025)
 https://www.koeln.de/kino/film/marty-supreme
-
-Wuthering Heights - Sturmhöhe (2026)
-https://www.koeln.de/kino/film/wuthering-heights---sturmhoehe
 
 OmU (Original with Subtitles):
 Father Mother Sister Brother (2025)
@@ -97,25 +89,27 @@ https://www.koeln.de/kino/film/father-mother-sister-brother
 
 ---
 
-## Automating with a daily schedule
+## Scheduling
 
-To run the script automatically every day, add it as a cron job on macOS:
+For daily automation on Unix-like systems, add a cron entry:
 
 ```bash
 crontab -e
 ```
 
-Then add a line like this to run it every morning at 9am:
+Then include:
 
 ```
-0 9 * * * /usr/bin/python3 /path/to/kino_koeln.py
+0 9 * * * /usr/bin/python3 /path/to/kino_koeln_notify.py
 ```
+
+Adjust timing as desired.
 
 ---
 
 ## Notes
 
-- Pushover messages are capped at 1024 characters. If there are many films, the script automatically splits the output into multiple messages.
-- OmU screenings include a German subtitle track — useful if you want to follow along.
-- The script reads from the live koeln.de page, so listings reflect what's currently showing.
-- The file `movie_titles.txt` was previously used for example output and has been removed from the repository; it is not needed for operation.
+- Pushover limits each message to 1024 characters; the script splits long lists automatically.
+- OmU movies have German subtitles, making them easy to follow.
+- Live scraping ensures the data reflect the current listings.
+- No static data file is required; `movie_titles.txt` was removed from the repository as part of the cleanup.
