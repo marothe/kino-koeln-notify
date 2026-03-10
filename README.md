@@ -74,7 +74,9 @@ python kino_koeln_notify.py
 python kino_koeln_notify.py
 ```
 
-(or via Docker Compose as shown above). Notifications look like:
+(or via Docker Compose as shown above). When run directly the script enters a loop that waits until Thursday at 19:00 and then sends a notification; this mimics the original weekly schedule. If you prefer a different cadence (e.g. every day) either edit the scheduling code or simply run the script from an external scheduler instead of relying on the built‑in loop.
+
+Notifications look like:
 
 ```
 OV (Original Version):
@@ -91,7 +93,9 @@ https://www.koeln.de/kino/film/father-mother-sister-brother
 
 ## Scheduling
 
-For daily automation on Unix-like systems, add a cron entry:
+The script itself contains a simple loop that waits for Thursday at 19:00 and runs at that time each week. To change the frequency (for example, to send a notification every day) you can either modify or remove that loop, or simply call the script from an external scheduler such as cron or the Windows Task Scheduler.
+
+For example, to run the script daily at 9 am using cron:
 
 ```bash
 crontab -e
