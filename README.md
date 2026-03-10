@@ -1,6 +1,6 @@
 # kino-koeln-notify
 
-A lightweight Python notification utility that scrapes [koeln.de/kino](https://www.koeln.de/kino/) and sends a daily Pushover message listing all movies currently showing in Cologne in their **original language (OV)** or **original language with German subtitles (OmU)**. The list is built dynamically from the live website.
+A lightweight Python notification utility that scrapes [koeln.de/kino](https://www.koeln.de/kino/) and sends a Pushover message listing all movies currently showing in Cologne in their **original language (OV)** or **original language with German subtitles (OmU)**. The list is built dynamically from the live website; the built‑in schedule triggers each Thursday at 19:00, though you can run it more often via an external scheduler.
 
 ---
 
