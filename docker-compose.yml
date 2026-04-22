@@ -8,6 +8,8 @@ services:
     environment:
       - PUSHOVER_USER=${PUSHOVER_USER}
       - PUSHOVER_TOKEN=${PUSHOVER_TOKEN}
+      - KINO_WEBHOOK_URL=${KINO_WEBHOOK_URL}
+      - KINO_WEBHOOK_TOKEN=${KINO_WEBHOOK_TOKEN}
     # mount code for local development (optional)
     volumes:
       - ./:/app

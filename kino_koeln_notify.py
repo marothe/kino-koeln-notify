@@ -3,21 +3,29 @@ import time
 from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
-URL           = "https://www.koeln.de/kino/"
-BASE_URL      = "https://www.koeln.de"
-PUSHOVER_USER  = os.environ["PUSHOVER_USER"]
-PUSHOVER_TOKEN = os.environ["PUSHOVER_TOKEN"]
-MAX_LENGTH    = 1024
+load_dotenv()
+
+URL = "https://www.koeln.de/kino/"
+BASE_URL = "https://www.koeln.de"
+PUSHOVER_USER = os.getenv("PUSHOVER_USER", "")
+PUSHOVER_TOKEN = os.getenv("PUSHOVER_TOKEN", "")
+KINO_WEBHOOK_URL = os.getenv("KINO_WEBHOOK_URL", "")
+KINO_WEBHOOK_TOKEN = os.getenv("KINO_WEBHOOK_TOKEN", "")
+MAX_LENGTH = 1024
 
 
-def get_ov_movies(url: str):
+def slug(value: str) -> str:
+    return "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
+
+
+def get_movies(url: str):
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
-    ov_movies = set()
-    omu_movies = set()
+    movies = {}
 
     for li in soup.select("ul > li"):
         title_tag = li.select_one("h2 a")
@@ -39,18 +47,64 @@ def get_ov_movies(url: str):
                         year = part
                         break
 
-        entry = f"{title} ({year})\n{link}"
-
         if "(OV)" in text:
-            ov_movies.add(entry)
+            key = f"{title}-OV-{link}"
+            movies[key] = {
+                "id": slug(key),
+                "title": title,
+                "year": int(year) if year else None,
+                "cinema": "koeln.de",
+                "language": "OV",
+                "showtime": "Details auf koeln.de",
+                "date": "Aktuelles Programm",
+                "description": "Live aus dem koeln.de Kinoprogramm.",
+                "isClassic": bool(year and int(year) <= 2010),
+                "isOmu": False,
+                "isOv": True,
+                "url": link,
+            }
         if "(OmU)" in text:
-            omu_movies.add(entry)
+            key = f"{title}-OmU-{link}"
+            movies[key] = {
+                "id": slug(key),
+                "title": title,
+                "year": int(year) if year else None,
+                "cinema": "koeln.de",
+                "language": "OmU",
+                "showtime": "Details auf koeln.de",
+                "date": "Aktuelles Programm",
+                "description": "Live aus dem koeln.de Kinoprogramm.",
+                "isClassic": bool(year and int(year) <= 2010),
+                "isOmu": True,
+                "isOv": False,
+                "url": link,
+            }
 
-    return sorted(ov_movies), sorted(omu_movies)
+    return sorted(movies.values(), key=lambda movie: (movie["language"], movie["title"]))
+
+
+def get_ov_movies(url: str):
+    movies = get_movies(url)
+    ov_movies = [
+        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['url']}"
+        for movie in movies
+        if movie["isOv"]
+    ]
+    omu_movies = [
+        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['url']}"
+        for movie in movies
+        if movie["isOmu"]
+    ]
+
+    return sorted(ov_movies), sorted(omu_movies), movies
 
 
 
 def send_pushover_message(message: str, title: str) -> None:
+    if not PUSHOVER_USER or not PUSHOVER_TOKEN:
+        print("Pushover skipped – PUSHOVER_USER/PUSHOVER_TOKEN not configured")
+        return
+
     response = requests.post(
         "https://api.pushover.net/1/messages.json",
         data={
@@ -79,10 +133,34 @@ def send_in_chunks(entries: list, section_title: str) -> None:
         send_pushover_message(current.strip(), "Kino Köln – OV/OmU heute")      
 
 
+def publish_web_data(movies: list) -> None:
+    if not KINO_WEBHOOK_URL:
+        print("Web publish skipped – KINO_WEBHOOK_URL not configured")
+        return
+
+    headers = {"Content-Type": "application/json"}
+    if KINO_WEBHOOK_TOKEN:
+        headers["X-Kino-Token"] = KINO_WEBHOOK_TOKEN
+
+    response = requests.post(
+        KINO_WEBHOOK_URL,
+        headers=headers,
+        json={
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "source": "kino-koeln-notify",
+            "movies": movies,
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    print(f"Published {len(movies)} movies to web")
+
+
 def run():
-    ov_movies, omu_movies = get_ov_movies(URL)
+    ov_movies, omu_movies, movies = get_ov_movies(URL)
     send_in_chunks(list(ov_movies), "OV (Original Version)")
     send_in_chunks(list(omu_movies), "OmU (Original with Subtitles)")
+    publish_web_data(movies)
 
 
 def wait_until_next_thursday(hour: int = 19, minute: int = 0) -> None:

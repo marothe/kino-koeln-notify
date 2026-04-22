@@ -10,6 +10,7 @@ A lightweight Python notification utility that scrapes [koeln.de/kino](https://w
 - Identifies films tagged OV or OmU and pulls the release year
 - Includes links back to the corresponding koeln.de detail pages
 - Dispatches the results via Pushover, automatically splitting into multiple messages when needed
+- Optionally publishes the same live results as JSON to a website endpoint
 
 ---
 
@@ -32,9 +33,11 @@ Environment variables drive the configuration. Define the following values befor
 ```bash
 PUSHOVER_USER=your_pushover_user_key
 PUSHOVER_TOKEN=your_pushover_api_token
+KINO_WEBHOOK_URL=https://marcusrothe.de/api/kino
+KINO_WEBHOOK_TOKEN=your_shared_secret
 ```
 
-You obtain these credentials from [pushover.net](https://pushover.net). To keep them out of Git, put the two lines in a `.env` file at the project root; the script loads that file automatically.
+You obtain the Pushover credentials from [pushover.net](https://pushover.net). `KINO_WEBHOOK_URL` and `KINO_WEBHOOK_TOKEN` are optional; set them when you want the local scraper to update the public `/kino` page. To keep secrets out of Git, put the values in a `.env` file at the project root; the script loads that file automatically.
 
 ### Docker
 
@@ -48,6 +51,8 @@ services:
     environment:
       - PUSHOVER_USER=${PUSHOVER_USER}
       - PUSHOVER_TOKEN=${PUSHOVER_TOKEN}
+      - KINO_WEBHOOK_URL=${KINO_WEBHOOK_URL}
+      - KINO_WEBHOOK_TOKEN=${KINO_WEBHOOK_TOKEN}
     volumes:
       - ./:/app
     restart: unless-stopped
@@ -62,7 +67,7 @@ docker-compose up --build
 You can also run the script directly once the variables are exported:
 
 ```bash
-export PUSHOVER_USER=... PUSHOVER_TOKEN=...
+export PUSHOVER_USER=... PUSHOVER_TOKEN=... KINO_WEBHOOK_URL=... KINO_WEBHOOK_TOKEN=...
 python kino_koeln_notify.py
 ```
 
