@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime, timezone
+from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -20,78 +21,158 @@ def slug(value: str) -> str:
     return "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
 
 
+def absolutize_url(path: str) -> str:
+    if path.startswith("http"):
+        return path
+    return BASE_URL + path
+
+
+def parse_year(movie_container) -> Optional[int]:
+    for item in movie_container.select("ul.meta li"):
+        label = item.select_one(".label")
+        if not label or label.get_text(strip=True) != "Jahr":
+            continue
+
+        for part in item.get_text(separator="\n").splitlines():
+            part = part.strip()
+            if part.isdigit() and len(part) == 4:
+                return int(part)
+
+    return None
+
+
+def parse_screenings(movie_container, language: str) -> list:
+    screenings = []
+
+    for day in movie_container.select("ul.shows-by-date > li.kk-tab"):
+        date_label = day.select_one(".date-container span")
+        date_label = date_label.get_text(" ", strip=True) if date_label else "Aktuelles Programm"
+
+        for event in day.select('div[itemprop="event"]'):
+            time_tag = event.select_one(".time")
+            time_value = time_tag.get_text(" ", strip=True) if time_tag else ""
+            start_date = event.select_one('meta[itemprop="startDate"]')
+            start_date = start_date.get("content", "") if start_date else ""
+
+            for location in event.select('p[itemprop="location"]'):
+                version = location.select_one(".kk-ov-show-version")
+                if not version or version.get_text(" ", strip=True) != f"({language})":
+                    continue
+
+                cinema_tag = location.select_one('meta[itemprop="name"]')
+                cinema_name = cinema_tag.get("content", "").strip() if cinema_tag else ""
+                cinema_link = location.select_one("a[href]")
+                cinema_url = absolutize_url(cinema_link["href"]) if cinema_link else ""
+
+                if cinema_name and time_value:
+                    screenings.append(
+                        {
+                            "dateLabel": date_label,
+                            "startDate": start_date,
+                            "time": time_value,
+                            "cinema": cinema_name,
+                            "cinemaUrl": cinema_url,
+                            "language": language,
+                        }
+                    )
+
+    return screenings
+
+
+def summarize_cinemas(screenings: list) -> str:
+    cinemas = []
+    for screening in screenings:
+        cinema = screening["cinema"]
+        if cinema not in cinemas:
+            cinemas.append(cinema)
+    if len(cinemas) <= 3:
+        return ", ".join(cinemas)
+    return ", ".join(cinemas[:3]) + f" +{len(cinemas) - 3}"
+
+
+def summarize_showtimes(screenings: list) -> tuple[str, str]:
+    if not screenings:
+        return "Aktuelles Programm", "Details auf koeln.de"
+
+    grouped = {}
+    for screening in screenings:
+        grouped.setdefault(screening["dateLabel"], [])
+        if screening["time"] not in grouped[screening["dateLabel"]]:
+            grouped[screening["dateLabel"]].append(screening["time"])
+
+    first_date = next(iter(grouped))
+    first_times = ", ".join(grouped[first_date][:5])
+    if len(grouped[first_date]) > 5:
+        first_times += f" +{len(grouped[first_date]) - 5}"
+
+    if len(grouped) > 1:
+        first_times += f" | +{len(grouped) - 1} Tage"
+
+    return first_date, first_times
+
+
+def build_movie(base_movie: dict, language: str, screenings: list) -> dict:
+    date_label, showtime = summarize_showtimes(screenings)
+    return {
+        **base_movie,
+        "id": slug(f"{base_movie['title']}-{language}-{base_movie['url']}"),
+        "cinema": summarize_cinemas(screenings),
+        "language": language,
+        "showtime": showtime,
+        "date": date_label,
+        "isOmu": language == "OmU",
+        "isOv": language == "OV",
+        "screenings": screenings,
+    }
+
+
 def get_movies(url: str):
     response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
-    movies = {}
+    movies = []
 
-    for li in soup.select("ul > li"):
-        title_tag = li.select_one("h2 a")
+    for li in soup.select("li.movie-container"):
+        title_tag = li.select_one('h2 a[itemprop="name"], h2 a[href^="/kino/film/"]')
         if not title_tag:
             continue
 
         title = title_tag.text.strip()
-        link = BASE_URL + title_tag["href"]
-        text = li.get_text()
+        link = absolutize_url(title_tag["href"])
+        year = parse_year(li)
+        description = li.select_one('[itemprop="description"]')
+        description = (
+            description.get_text(" ", strip=True)
+            if description
+            else "Live aus dem koeln.de Kinoprogramm."
+        )
 
-        year = ""
-        for item in li.select("li"):
-            item_text = item.get_text(separator="\n").strip()
-            if item_text.startswith("Jahr"):
-                parts = item_text.split("\n")
-                for part in parts:
-                    part = part.strip()
-                    if part.isdigit() and len(part) == 4:
-                        year = part
-                        break
+        base_movie = {
+            "title": title,
+            "year": year,
+            "description": description,
+            "isClassic": bool(year and year <= 2010),
+            "url": link,
+        }
 
-        if "(OV)" in text:
-            key = f"{title}-OV-{link}"
-            movies[key] = {
-                "id": slug(key),
-                "title": title,
-                "year": int(year) if year else None,
-                "cinema": "koeln.de",
-                "language": "OV",
-                "showtime": "Details auf koeln.de",
-                "date": "Aktuelles Programm",
-                "description": "Live aus dem koeln.de Kinoprogramm.",
-                "isClassic": bool(year and int(year) <= 2010),
-                "isOmu": False,
-                "isOv": True,
-                "url": link,
-            }
-        if "(OmU)" in text:
-            key = f"{title}-OmU-{link}"
-            movies[key] = {
-                "id": slug(key),
-                "title": title,
-                "year": int(year) if year else None,
-                "cinema": "koeln.de",
-                "language": "OmU",
-                "showtime": "Details auf koeln.de",
-                "date": "Aktuelles Programm",
-                "description": "Live aus dem koeln.de Kinoprogramm.",
-                "isClassic": bool(year and int(year) <= 2010),
-                "isOmu": True,
-                "isOv": False,
-                "url": link,
-            }
+        for language in ("OV", "OmU"):
+            screenings = parse_screenings(li, language)
+            if screenings:
+                movies.append(build_movie(base_movie, language, screenings))
 
-    return sorted(movies.values(), key=lambda movie: (movie["language"], movie["title"]))
+    return sorted(movies, key=lambda movie: (movie["language"], movie["title"]))
 
 
 def get_ov_movies(url: str):
     movies = get_movies(url)
     ov_movies = [
-        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['url']}"
+        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['cinema']} · {movie['date']} · {movie['showtime']}\n{movie['url']}"
         for movie in movies
         if movie["isOv"]
     ]
     omu_movies = [
-        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['url']}"
+        f"{movie['title']} ({movie['year'] or 'Jahr unbekannt'})\n{movie['cinema']} · {movie['date']} · {movie['showtime']}\n{movie['url']}"
         for movie in movies
         if movie["isOmu"]
     ]

@@ -7,7 +7,7 @@ A lightweight Python notification utility that scrapes [koeln.de/kino](https://w
 ## What it does
 
 - Fetches the cinema listings with `requests` and parses them using `BeautifulSoup`
-- Identifies films tagged OV or OmU and pulls the release year
+- Identifies films tagged OV or OmU and pulls the release year, cinemas, dates, and showtimes
 - Includes links back to the corresponding koeln.de detail pages
 - Dispatches the results via Pushover, automatically splitting into multiple messages when needed
 - Optionally publishes the same live results as JSON to a website endpoint
