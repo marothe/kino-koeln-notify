@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import requests
 from bs4 import BeautifulSoup
@@ -223,18 +223,21 @@ def publish_web_data(movies: list) -> None:
     if KINO_WEBHOOK_TOKEN:
         headers["X-Kino-Token"] = KINO_WEBHOOK_TOKEN
 
-    response = requests.post(
-        KINO_WEBHOOK_URL,
-        headers=headers,
-        json={
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
-            "source": "kino-koeln-notify",
-            "movies": movies,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    print(f"Published {len(movies)} movies to web")
+    try:
+        response = requests.post(
+            KINO_WEBHOOK_URL,
+            headers=headers,
+            json={
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "source": "kino-koeln-notify",
+                "movies": movies,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        print(f"Published {len(movies)} movies to web")
+    except requests.RequestException as error:
+        print(f"Web publish failed – {error}")
 
 
 def run():
@@ -251,8 +254,7 @@ def wait_until_next_thursday(hour: int = 19, minute: int = 0) -> None:
     # If it's already Thursday but past the target time, wait for next week     
     if days_ahead == 0 and (now.hour, now.minute) >= (hour, minute):
         days_ahead = 7
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)     
-    target = target.replace(day=now.day + days_ahead)
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_ahead)
     wait_seconds = (target - now).total_seconds()
     print(f"Next run scheduled for {target.strftime('%A %Y-%m-%d %H:%M')} — sleeping {wait_seconds/3600:.1f}h")
     time.sleep(wait_seconds)

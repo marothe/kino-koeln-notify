@@ -9,11 +9,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # copy application code
-COPY kino_koeln.py .
+COPY kino_koeln_notify.py .
 
 # set environment variables defaults (can be overridden by compose)
 ENV PUSHOVER_USER="" \
-    PUSHOVER_TOKEN=""
+    PUSHOVER_TOKEN="" \
+    KINO_WEBHOOK_URL="" \
+    KINO_WEBHOOK_TOKEN=""
 
 # default command
-CMD ["python", "kino_koeln.py"]
+CMD ["python", "kino_koeln_notify.py"]

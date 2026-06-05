@@ -37,7 +37,7 @@ KINO_WEBHOOK_URL=https://marcusrothe.de/api/kino
 KINO_WEBHOOK_TOKEN=your_shared_secret
 ```
 
-You obtain the Pushover credentials from [pushover.net](https://pushover.net). `KINO_WEBHOOK_URL` and `KINO_WEBHOOK_TOKEN` are optional; set them when you want the local scraper to update the public `/kino` page. To keep secrets out of Git, put the values in a `.env` file at the project root; the script loads that file automatically.
+You obtain the Pushover credentials from [pushover.net](https://pushover.net). `KINO_WEBHOOK_URL` and `KINO_WEBHOOK_TOKEN` are optional; set them when you want the local scraper to update the public `/kino` page. On the `marcusrothe.de` Netlify site, configure the same secret as `KINO_WRITE_TOKEN` or `KINO_WEBHOOK_TOKEN`; the value must match this project's `KINO_WEBHOOK_TOKEN`. To keep secrets out of Git, put the values in a `.env` file at the project root; the script loads that file automatically.
 
 ### Docker
 
