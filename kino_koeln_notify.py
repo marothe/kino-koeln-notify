@@ -1,6 +1,8 @@
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import Optional
 import requests
 from bs4 import BeautifulSoup
@@ -14,6 +16,8 @@ PUSHOVER_USER = os.getenv("PUSHOVER_USER", "")
 PUSHOVER_TOKEN = os.getenv("PUSHOVER_TOKEN", "")
 KINO_WEBHOOK_URL = os.getenv("KINO_WEBHOOK_URL", "")
 KINO_WEBHOOK_TOKEN = os.getenv("KINO_WEBHOOK_TOKEN", "")
+TMDB_API_TOKEN = os.getenv("TMDB_API_TOKEN", "")
+FALLBACK_DESCRIPTION = "Live aus dem koeln.de Kinoprogramm."
 MAX_LENGTH = 1024
 
 
@@ -25,6 +29,94 @@ def absolutize_url(path: str) -> str:
     if path.startswith("http"):
         return path
     return BASE_URL + path
+
+
+def clean_movie_title(title: str) -> str:
+    return re.sub(r"\s*\((?:OV|OmU|OmdU|OF|DF)\)\s*$", "", title, flags=re.IGNORECASE).strip()
+
+
+def normalized_title(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", clean_movie_title(title).lower()).strip()
+
+
+def titles_match(left: str, right: str) -> bool:
+    left_normalized = normalized_title(left)
+    right_normalized = normalized_title(right)
+    if not left_normalized or not right_normalized:
+        return False
+    if left_normalized == right_normalized:
+        return True
+    return SequenceMatcher(None, left_normalized, right_normalized).ratio() >= 0.86
+
+
+def tmdb_get(path: str, params: dict) -> Optional[dict]:
+    if not TMDB_API_TOKEN:
+        return None
+
+    response = requests.get(
+        f"https://api.themoviedb.org/3/{path}",
+        headers={
+            "Authorization": f"Bearer {TMDB_API_TOKEN}",
+            "Accept": "application/json",
+        },
+        params=params,
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def tmdb_search_movie(title: str, year: Optional[int], language: str) -> Optional[dict]:
+    params = {
+        "query": clean_movie_title(title),
+        "language": language,
+        "include_adult": "true",
+    }
+    if year:
+        params["year"] = str(year)
+
+    payload = tmdb_get("search/movie", params)
+    if not payload:
+        return None
+
+    for result in payload.get("results", [])[:5]:
+        result_title = result.get("title") or result.get("original_title") or ""
+        release_year = (result.get("release_date") or "")[:4]
+        year_matches = not year or release_year == str(year)
+        if year_matches and titles_match(title, result_title):
+            return result
+
+    return None
+
+
+def enrich_movie_metadata(movie: dict) -> dict:
+    if movie["description"] != FALLBACK_DESCRIPTION:
+        return movie
+    if not TMDB_API_TOKEN:
+        return movie
+
+    for language in ("de-DE", "en-US"):
+        try:
+            result = tmdb_search_movie(movie["title"], movie["year"], language)
+        except requests.RequestException as error:
+            print(f"TMDb lookup failed for {movie['title']} – {error}")
+            return movie
+
+        overview = (result or {}).get("overview", "").strip()
+        if overview:
+            poster_path = result.get("poster_path")
+            enriched = {
+                **movie,
+                "description": overview,
+                "metadataSource": "tmdb",
+                "tmdbId": result.get("id"),
+            }
+            if poster_path:
+                enriched["posterUrl"] = f"https://image.tmdb.org/t/p/w500{poster_path}"
+            print(f"Enriched metadata for {movie['title']} via TMDb")
+            return enriched
+
+    return movie
 
 
 def parse_year(movie_container) -> Optional[int]:
@@ -142,19 +234,17 @@ def get_movies(url: str):
         link = absolutize_url(title_tag["href"])
         year = parse_year(li)
         description = li.select_one('[itemprop="description"]')
-        description = (
-            description.get_text(" ", strip=True)
-            if description
-            else "Live aus dem koeln.de Kinoprogramm."
-        )
+        description = description.get_text(" ", strip=True) if description else ""
+        if not description:
+            description = FALLBACK_DESCRIPTION
 
-        base_movie = {
+        base_movie = enrich_movie_metadata({
             "title": title,
             "year": year,
             "description": description,
             "isClassic": bool(year and year <= 2010),
             "url": link,
-        }
+        })
 
         for language in ("OV", "OmU"):
             screenings = parse_screenings(li, language)
