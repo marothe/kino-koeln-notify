@@ -36,9 +36,10 @@ PUSHOVER_TOKEN=your_pushover_api_token
 KINO_WEBHOOK_URL=https://marcusrothe.de/api/kino
 KINO_WEBHOOK_TOKEN=your_shared_secret
 TMDB_API_TOKEN=your_tmdb_read_access_token
+TMDB_API_KEY=your_tmdb_api_key
 ```
 
-You obtain the Pushover credentials from [pushover.net](https://pushover.net). `KINO_WEBHOOK_URL` and `KINO_WEBHOOK_TOKEN` are optional; set them when you want the local scraper to update the public `/kino` page. On the `marcusrothe.de` Netlify site, configure the same secret as `KINO_WRITE_TOKEN` or `KINO_WEBHOOK_TOKEN`; the value must match this project's `KINO_WEBHOOK_TOKEN`. `TMDB_API_TOKEN` is optional; when set, movies without a koeln.de description are enriched from TMDb. To keep secrets out of Git, put the values in a `.env` file at the project root; the script loads that file automatically.
+You obtain the Pushover credentials from [pushover.net](https://pushover.net). `KINO_WEBHOOK_URL` and `KINO_WEBHOOK_TOKEN` are optional; set them when you want the local scraper to update the public `/kino` page. On the `marcusrothe.de` Netlify site, configure the same secret as `KINO_WRITE_TOKEN` or `KINO_WEBHOOK_TOKEN`; the value must match this project's `KINO_WEBHOOK_TOKEN`. TMDb enrichment is optional; set either `TMDB_API_TOKEN` for the read access token or `TMDB_API_KEY` for the shorter API key. To keep secrets out of Git, put the values in a `.env` file at the project root; the script loads that file automatically.
 
 ### Docker
 
@@ -55,6 +56,7 @@ services:
       - KINO_WEBHOOK_URL=${KINO_WEBHOOK_URL}
       - KINO_WEBHOOK_TOKEN=${KINO_WEBHOOK_TOKEN}
       - TMDB_API_TOKEN=${TMDB_API_TOKEN}
+      - TMDB_API_KEY=${TMDB_API_KEY}
     volumes:
       - ./:/app
     restart: unless-stopped

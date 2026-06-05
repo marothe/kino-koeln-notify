@@ -17,6 +17,7 @@ PUSHOVER_TOKEN = os.getenv("PUSHOVER_TOKEN", "")
 KINO_WEBHOOK_URL = os.getenv("KINO_WEBHOOK_URL", "")
 KINO_WEBHOOK_TOKEN = os.getenv("KINO_WEBHOOK_TOKEN", "")
 TMDB_API_TOKEN = os.getenv("TMDB_API_TOKEN", "")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 FALLBACK_DESCRIPTION = "Live aus dem koeln.de Kinoprogramm."
 MAX_LENGTH = 1024
 
@@ -50,15 +51,18 @@ def titles_match(left: str, right: str) -> bool:
 
 
 def tmdb_get(path: str, params: dict) -> Optional[dict]:
-    if not TMDB_API_TOKEN:
+    if not TMDB_API_TOKEN and not TMDB_API_KEY:
         return None
+
+    headers = {"Accept": "application/json"}
+    if TMDB_API_TOKEN:
+        headers["Authorization"] = f"Bearer {TMDB_API_TOKEN}"
+    else:
+        params = {**params, "api_key": TMDB_API_KEY}
 
     response = requests.get(
         f"https://api.themoviedb.org/3/{path}",
-        headers={
-            "Authorization": f"Bearer {TMDB_API_TOKEN}",
-            "Accept": "application/json",
-        },
+        headers=headers,
         params=params,
         timeout=15,
     )
@@ -92,7 +96,7 @@ def tmdb_search_movie(title: str, year: Optional[int], language: str) -> Optiona
 def enrich_movie_metadata(movie: dict) -> dict:
     if movie["description"] != FALLBACK_DESCRIPTION:
         return movie
-    if not TMDB_API_TOKEN:
+    if not TMDB_API_TOKEN and not TMDB_API_KEY:
         return movie
 
     for language in ("de-DE", "en-US"):
