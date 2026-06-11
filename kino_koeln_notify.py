@@ -328,7 +328,9 @@ def publish_web_data(movies: list) -> None:
             },
             timeout=30,
         )
-        response.raise_for_status()
+        if not response.ok:
+            print(f"Web publish failed – status {response.status_code}: {response.text}")
+            return
         print(f"Published {len(movies)} movies to web")
     except requests.RequestException as error:
         print(f"Web publish failed – {error}")
